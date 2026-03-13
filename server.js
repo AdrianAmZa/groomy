@@ -50,7 +50,18 @@ function createRoom() {
 function broadcastState(roomCode) {
   const room = rooms.get(roomCode);
   if (!room) return;
-  const msg = JSON.stringify({ type: "state", state: room });
+  // Strip internal fields (_timer, _ws) to avoid circular JSON errors
+  const safeState = {
+    code: room.code,
+    issues: room.issues,
+    currentIndex: room.currentIndex,
+    participants: room.participants.map(({ _ws, ...rest }) => rest),
+    settings: room.settings,
+    phase: room.phase,
+    timerRemaining: room.timerRemaining,
+    reactions: room.reactions,
+  };
+  const msg = JSON.stringify({ type: "state", state: safeState });
   room.participants.forEach((p) => {
     if (p._ws && p._ws.readyState === 1) p._ws.send(msg);
   });
