@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GROOMY â Planning Poker</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>ð</text></svg>">
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--mono:'SF Mono','Fira Code','Cascadia Code','Courier New',monospace;--sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;--accent:#FF3D00;--black:#000;--white:#fff;--bg:#F0EFEB;--surface:#fff;--text:#000;--muted:#666;--border:3px solid #000;--shadow:4px 4px 0px #000;--shadow-sm:2px 2px 0px #000;--shadow-hover:6px 6px 0px #000}
+.dark{--bg:#1A1A1A;--surface:#2A2A2A;--text:#F0F0F0;--muted:#999;--border:3px solid #F0F0F0;--shadow:4px 4px 0px #F0F0F0;--shadow-sm:2px 2px 0px #888;--shadow-hover:6px 6px 0px #F0F0F0}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);min-height:100vh}
+::selection{background:var(--accent);color:#fff}
+
+@keyframes float-up{0%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-120px) scale(1.5)}}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+@keyframes confetti-fall{0%{transform:translateY(-10px) rotate(0deg);opacity:1}100%{transform:translateY(400px) rotate(720deg);opacity:0}}
+@keyframes slide-in{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes card-flip{0%{transform:rotateY(0)}50%{transform:rotateY(90deg)}100%{transform:rotateY(0)}}
+@keyframes glow-pulse{0%,100%{box-shadow:var(--shadow)}50%{box-shadow:4px 4px 0px var(--accent),0 0 20px rgba(255,61,0,.3)}}
+@keyframes pulse-dot{0%,100%{opacity:.4}50%{opacity:1}}
+
+.btn{border:var(--border);box-shadow:var(--shadow-sm);transition:all .15s ease;cursor:pointer;font-family:var(--mono);font-weight:700;text-transform:uppercase;letter-spacing:.05em;border-radius:8px;font-size:.85rem;display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:var(--surface);color:var(--text)}
+.btn:hover{transform:translate(-1px,-1px);box-shadow:var(--shadow-hover)}
+.btn:active{transform:translate(2px,2px);box-shadow:1px 1px 0px var(--text)}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-dark{background:var(--black);color:#fff}
+.btn-sm{padding:6px 12px;font-size:.75rem}
+
+.card{border:var(--border);box-shadow:var(--shadow-sm);transition:all .2s cubic-bezier(.175,.885,.32,1.275);cursor:pointer;user-select:none;border-radius:8px;width:72px;height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--surface)}
+.card:hover{transform:translateY(-6px) rotate(-2deg);box-shadow:var(--shadow-hover)}
+.card.selected{background:#000!important;color:#fff!important;transform:translateY(-8px);box-shadow:6px 8px 0px var(--accent)}
+.card.disabled{opacity:.5;cursor:default;transform:none!important;box-shadow:var(--shadow-sm)!important}
+.card.revealed{animation:card-flip .6s ease}
+
+.surface{border:var(--border);box-shadow:var(--shadow);background:var(--surface);border-radius:12px}
+.input{width:100%;padding:12px 16px;font-size:1.05rem;border:var(--border);background:var(--surface);font-family:var(--sans);font-weight:600;border-radius:6px;outline:none;color:var(--text)}
+.input:focus{box-shadow:0 0 0 3px rgba(255,61,0,.2)}
+.input-sm{padding:8px 10px;font-size:.85rem}
+.mono{font-family:var(--mono)}
+.label{font-family:var(--mono);font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);display:block;margin-bottom:6px}
+.tag{font-family:var(--mono);font-size:.65rem;font-weight:700;padding:2px 8px;border-radius:4px;text-transform:uppercase;letter-spacing:.1em}
+
+.sidebar{width:260px;border-right:var(--border);background:var(--surface);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden}
+.sidebar-r{width:220px;border-left:var(--border);background:var(--surface);display:flex;flex-direction:column;flex-shrink:0;overflow:auto}
+
+@media(max-width:900px){.sidebar,.sidebar-r{display:none}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useReducer,useCallback}=React;
+
+/* âââââââââââââ CONSTANTS âââââââââââââ */
+const FIBONACCI=[0,1,2,3,5,8,13,21];
+const SPECIAL=["?","â"];
+const ALL_CARDS=[...FIBONACCI,...SPECIAL];
+const TSHIRT=[
+  {label:"XS",max:1.5,color:"#4CAF50"},{label:"S",max:3.5,color:"#8BC34A"},
+  {label:"M",max:6.5,color:"#FFC107"},{label:"L",max:10.5,color:"#FF9800"},
+  {label:"XL",max:17,color:"#FF5722"},{label:"XXL",max:Infinity,color:"#D32F2F"},
+];
+const EMOJIS=["ð","ð¥","ð¤","ð","ð¯","ð¡","â¡","â¤ï¸","ð","ð"];
+const getTShirt=(avg)=>{
+  if(avg==null||isNaN(avg))return{label:"â",color:"#999"};
+  for(const s of TSHIRT)if(avg<=s.max)return s;
+  return TSHIRT[TSHIRT.length-1];
+};
+
+/* âââââââââââââ WEBSOCKET HOOK âââââââââââââ */
+function useWebSocket(){
+  const ws=useRef(null);
+  const [connected,setConnected]=useState(false);
+  const [roomState,setRoomState]=useState(null);
+  const [userId,setUserId]=useState(null);
+  const [roomCode,setRoomCode]=useState(null);
+  const [floatingEmojis,setFloatingEmojis]=useState([]);
+  const [error,setError]=useState(null);
+  const reconnectTimer=useRef(null);
+
+  const connect=useCallback(()=>{
+    const proto=location.protocol==="https:"?"wss":"ws";
+    const socket=new WebSocket(`${proto}://${location.host}`);
+    ws.current=socket;
+    socket.onopen=()=>{setConnected(true);setError(null)};
+    socket.onclose=()=>{
+      setConnected(false);
+      reconnectTimer.current=setTimeout(connect,2000);
+    };
+    socket.onerror=()=>setError("Error de conexiÃ³n");
+    socket.onmessage=(e)=>{
+      const msg=JSON.parse(e.data);
+      if(msg.type==="state"){
+        // Strip _ws refs before setting state
+        const s={...msg.state};
+        s.participants=s.participants.map(p=>{const{_ws,...rest}=p;return rest});
+        setRoomState(s);
+      }
+      if(msg.type==="joined"){setRoomCode(msg.roomCode);setUserId(msg.userId)}
+      if(msg.type==="error")setError(msg.message);
+      if(msg.type==="reaction"){
+        const id=Math.random().toString(36).slice(2);
+        setFloatingEmojis(prev=>[...prev,{id,emoji:msg.emoji,user:msg.user,ts:Date.now(),x:`${20+Math.random()*60}%`}]);
+      }
+    };
+  },[]);
+
+  useEffect(()=>{connect();return()=>{clearTimeout(reconnectTimer.current);ws.current?.close()}},[connect]);
+  useEffect(()=>{
+    const iv=setInterval(()=>setFloatingEmojis(p=>p.filter(e=>Date.now()-e.ts<2500)),500);
+    return()=>clearInterval(iv);
+  },[]);
+
+  const send=useCallback((msg)=>{
+    if(ws.current?.readyState===1)ws.current.send(JSON.stringify(msg));
+  },[]);
+
+  return{connected,roomState,userId,roomCode,send,floatingEmojis,error};
+}
+
+/* âââââââââââââ CONFETTI âââââââââââââ */
+function Confetti({active}){
+  if(!active)return null;
+  const colors=["#FF3D00","#FFC107","#4CAF50","#2196F3","#9C27B0","#FF9800"];
+  return <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:9999}}>
+    {Array.from({length:50},(_,i)=><div key={i} style={{
+      position:"absolute",top:-10,left:`${Math.random()*100}%`,
+      width:`${8+Math.random()*8}px`,height:`${8+Math.random()*8}px`,
+      background:colors[i%colors.length],borderRadius:Math.random()>.5?"50%":"0",
+      animation:`confetti-fall ${1.5+Math.random()*2}s ease-in ${Math.random()*.5}s forwards`,
+    }}/>)}
+  </div>;
+}
+
+/* âââââââââââââ TIMER BAR âââââââââââââ */
+function TimerBar({remaining,total}){
+  const pct=total>0?(remaining/total)*100:0;
+  const low=remaining<=10&&remaining>0;
+  const m=Math.floor(remaining/60),s=remaining%60;
+  return <div style={{width:"100%"}}>
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,marginBottom:8}}>
+      <span className="mono" style={{fontSize:"2rem",fontWeight:900,letterSpacing:".05em",
+        color:low?"var(--accent)":"var(--text)",animation:low?"shake .3s infinite":"none"}}>
+        â± {String(m).padStart(2,"0")}:{String(s).padStart(2,"0")}
+      </span>
+    </div>
+    <div style={{width:"100%",height:8,background:"#E0E0E0",border:"2px solid var(--text)",overflow:"hidden"}}>
+      <div style={{width:`${pct}%`,height:"100%",background:low?"var(--accent)":"var(--text)",transition:"width 1s linear"}}/>
+    </div>
+  </div>;
+}
+
+/* âââââââââââââ VOTE DISTRIBUTION âââââââââââââ */
+function VoteDistribution({votes}){
+  const counts={};
+  Object.values(votes||{}).forEach(v=>{if(v!=null)counts[v]=(counts[v]||0)+1});
+  const maxC=Math.max(...Object.values(counts),1);
+  return <div style={{display:"flex",alignItems:"flex-end",gap:6,height:80,padding:"8px 0"}}>
+    {ALL_CARDS.filter(c=>counts[c]).map(c=><div key={c} style={{display:"flex",flexDirection:"column",alignItems:"center",flex:1}}>
+      <span className="mono" style={{fontSize:".7rem",fontWeight:700,marginBottom:4}}>{counts[c]}</span>
+      <div style={{width:"100%",maxWidth:40,height:`${(counts[c]/maxC)*50}px`,background:"var(--text)",border:"2px solid var(--text)",minHeight:4}}/>
+      <span className="mono" style={{fontSize:".7rem",marginTop:4,fontWeight:600}}>{c}</span>
+    </div>)}
+  </div>;
+}
+
+/* âââââââââââââ MAIN APP âââââââââââââ */
+function App(){
+  const{connected,roomState,userId,roomCode,send,floatingEmojis,error}=useWebSocket();
+  const[screen,setScreen]=useState("lobby");
+  const[name,setName]=useState("");
+  const[role,setRole]=useState("voter");
+  const[dark,setDark]=useState(false);
+  const[newIssue,setNewIssue]=useState("");
+  const[showSettings,setShowSettings]=useState(false);
+  const[copied,setCopied]=useState(false);
+  const[confetti,setConfetti]=useState(false);
+  const prevPhase=useRef(null);
+
+  // Join room flow
+  const[joinCode,setJoinCode]=useState("");
+
+  // Detect confetti on consensus
+  useEffect(()=>{
+    if(roomState?.phase==="revealed"&&prevPhase.current==="voting"){
+      const issue=roomState.issues?.[roomState.currentIndex];
+      if(issue?.result?.consensus)setConfetti(true);
+      setTimeout(()=>setConfetti(false),3000);
+    }
+    prevPhase.current=roomState?.phase;
+  },[roomState?.phase]);
+
+  useEffect(()=>{document.body.className=dark?"dark":""},[dark]);
+
+  const room=roomState;
+  const currentIssue=room?.issues?.[room?.currentIndex];
+  const voters=room?.participants?.filter(p=>p.role==="voter")||[];
+  const observers=room?.participants?.filter(p=>p.role==="observer")||[];
+  const myVote=currentIssue?.votes?.[userId];
+
+  const handleCopy=()=>{
+    navigator.clipboard?.writeText(roomCode||"");
+    setCopied(true);setTimeout(()=>setCopied(false),2000);
+  };
+
+  const handleCreate=()=>{
+    if(!name.trim())return;
+    send({type:"create",name:name.trim(),role,avatar:"ð"});
+    setScreen("room");
+  };
+  const handleJoin=()=>{
+    if(!name.trim()||!joinCode.trim())return;
+    send({type:"join",name:name.trim(),role,room:joinCode.trim(),avatar:"ð"});
+    setScreen("room");
+  };
+
+  /* âââââââ LOBBY âââââââ */
+  if(screen==="lobby"){
+    return <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{width:"100%",maxWidth:480,animation:"slide-in .4s ease"}}>
+        <div style={{textAlign:"center",marginBottom:48}}>
+          <h1 className="mono" style={{fontSize:"3.5rem",fontWeight:900,letterSpacing:".2em",
+            background:"linear-gradient(135deg,#FF3D00,#FF9100)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>
+            GROOMY
+          </h1>
+          <p className="mono" style={{fontSize:".8rem",letterSpacing:".15em",color:"var(--muted)",marginTop:8,textTransform:"uppercase"}}>
+            Planning Poker Â· EstimaciÃ³n Ãgil
+          </p>
+          <div style={{marginTop:8,display:"flex",justifyContent:"center",gap:4,alignItems:"center"}}>
+            <span style={{width:8,height:8,borderRadius:"50%",background:connected?"#4CAF50":"#F44336",display:"inline-block",animation:connected?"none":"pulse-dot 1s infinite"}}/>
+            <span className="mono" style={{fontSize:".65rem",color:"var(--muted)"}}>{connected?"CONECTADO":"CONECTANDO..."}</span>
+          </div>
+        </div>
+
+        {error&&<div style={{background:"#FFF3E0",border:"2px solid #FF9800",padding:"10px 16px",borderRadius:8,marginBottom:16,fontSize:".85rem",textAlign:"center"}}>â ï¸ {error}</div>}
+
+        <div className="surface" style={{padding:24,marginBottom:16}}>
+          <label className="label">Tu nombre</label>
+          <input className="input" value={name} onChange={e=>setName(e.target.value)}
+            placeholder="Â¿CÃ³mo te llamas?" onKeyDown={e=>e.key==="Enter"&&handleCreate()}/>
+          <div style={{display:"flex",gap:12,marginTop:16}}>
+            {[{r:"voter",icon:"ð³",l:"Votante"},{r:"observer",icon:"ð",l:"Observador"}].map(({r,icon,l})=>
+              <button key={r} className={`btn ${role===r?"btn-dark":""}`} style={{flex:1,justifyContent:"center"}}
+                onClick={()=>setRole(r)}>{icon} {l}</button>
+            )}
+          </div>
+        </div>
+
+        <button className="btn btn-primary" style={{width:"100%",justifyContent:"center",fontSize:"1.1rem",padding:"16px 24px",marginBottom:12}}
+          onClick={handleCreate} disabled={!name.trim()||!connected}>
+          â¶ CREAR SESIÃN
+        </button>
+
+        <div className="surface" style={{padding:16,display:"flex",gap:8,alignItems:"center"}}>
+          <input className="input input-sm" value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase())}
+            placeholder="CÃDIGO" maxLength={5} style={{fontFamily:"var(--mono)",letterSpacing:".15em",textAlign:"center",flex:1}}
+            onKeyDown={e=>e.key==="Enter"&&handleJoin()}/>
+          <button className="btn btn-dark btn-sm" onClick={handleJoin}
+            disabled={!name.trim()||!joinCode.trim()||!connected}>
+            UNIRSE
+          </button>
+        </div>
+
+        <div style={{textAlign:"center",marginTop:24}}>
+          <button onClick={()=>setDark(!dark)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--muted)",fontSize:".8rem",fontFamily:"var(--mono)"}}>
+            {dark?"â MODO CLARO":"ð MODO OSCURO"}
+          </button>
+        </div>
+      </div>
+    </div>;
+  }
+
+  /* âââââââ ROOM âââââââ */
+  return <div style={{minHeight:"100vh",background:"var(--bg)",display:"flex",flexDirection:"column"}}>
+    <Confetti active={confetti}/>
+
+    {/* âââ HEADER âââ */}
+    <header style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 20px",borderBottom:"var(--border)",background:"var(--surface)",flexWrap:"wrap",gap:8}}>
+      <div style={{display:"flex",alignItems:"center",gap:16}}>
+        <h1 className="mono" style={{fontSize:"1.3rem",fontWeight:900,letterSpacing:".15em",cursor:"pointer",color:"var(--accent)"}}
+          onClick={()=>setScreen("lobby")}>GROOMY</h1>
+        {roomCode&&<div style={{display:"flex",alignItems:"center",gap:8,background:"var(--bg)",padding:"6px 14px",borderRadius:6,border:"var(--border)"}}>
+          <span className="mono" style={{fontSize:".9rem",fontWeight:700,letterSpacing:".15em"}}>{roomCode}</span>
+          <button onClick={handleCopy} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text)",padding:2,fontSize:"1rem"}}>
+            {copied?"â":"ð"}
+          </button>
+        </div>}
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <span className="mono" style={{fontSize:".75rem",color:"var(--muted)"}}>ð¥ {room?.participants?.length||0}</span>
+        <span style={{width:8,height:8,borderRadius:"50%",background:connected?"#4CAF50":"#F44336"}}/>
+        <button className="btn btn-sm" onClick={()=>setShowSettings(!showSettings)}>â</button>
+        <button onClick={()=>setDark(!dark)} style={{background:"none",border:"none",cursor:"pointer",color:"var(--text)",padding:4,fontSize:"1.1rem"}}>
+          {dark?"â":"ð"}
+        </button>
+      </div>
+    </header>
+
+    {/* âââ SETTINGS âââ */}
+    {showSettings&&<div style={{padding:"16px 20px",borderBottom:"var(--border)",background:"var(--bg)",animation:"slide-in .2s ease"}}>
+      <div style={{display:"flex",flexWrap:"wrap",gap:20,alignItems:"center"}}>
+        <div>
+          <label className="label">Temporizador</label>
+          <div style={{display:"flex",gap:6}}>
+            {[30,60,90,120,180].map(d=><button key={d} className={`btn btn-sm ${room?.settings?.timerDuration===d?"btn-dark":""}`}
+              onClick={()=>send({type:"updateSettings",settings:{timerDuration:d}})}>{d}s</button>)}
+          </div>
+        </div>
+        <div>
+          <label className="label">VotaciÃ³n</label>
+          <button className={`btn btn-sm ${room?.settings?.anonymous?"btn-primary":""}`}
+            onClick={()=>send({type:"updateSettings",settings:{anonymous:!room?.settings?.anonymous}})}>
+            {room?.settings?.anonymous?"ð¶ ANÃNIMA":"ð PÃBLICA"}
+          </button>
+        </div>
+        <div>
+          <label className="label">Auto-revelar</label>
+          <button className="btn btn-sm" style={{background:room?.settings?.autoReveal?"#4CAF50":"var(--surface)",color:room?.settings?.autoReveal?"#fff":"var(--text)"}}
+            onClick={()=>send({type:"updateSettings",settings:{autoReveal:!room?.settings?.autoReveal}})}>
+            {room?.settings?.autoReveal?"â SÃ":"â NO"}
+          </button>
+        </div>
+      </div>
+    </div>}
+
+    {/* âââ MAIN LAYOUT âââ */}
+    <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+
+      {/* âââ LEFT SIDEBAR: ISSUES âââ */}
+      <aside className="sidebar">
+        <div style={{padding:"16px 16px 12px",borderBottom:"var(--border)"}}>
+          <h3 className="label" style={{marginBottom:12}}>ð Issues ({room?.issues?.length||0})</h3>
+          <div style={{display:"flex",gap:6}}>
+            <input className="input input-sm" value={newIssue} onChange={e=>setNewIssue(e.target.value)}
+              placeholder="TÃ­tulo del issue..." onKeyDown={e=>{if(e.key==="Enter"&&newIssue.trim()){send({type:"addIssue",title:newIssue.trim()});setNewIssue("")}}}/>
+            <button className="btn btn-sm btn-primary" onClick={()=>{if(newIssue.trim()){send({type:"addIssue",title:newIssue.trim()});setNewIssue("")}}}>+</button>
+          </div>
+        </div>
+        <div style={{flex:1,overflow:"auto",padding:8}}>
+          {(room?.issues||[]).map((issue,idx)=><div key={issue.id}
+            onClick={()=>room?.phase==="idle"&&send({type:"setCurrent",index:idx})}
+            style={{padding:"10px 12px",marginBottom:6,borderRadius:6,border:"var(--border)",
+              cursor:room?.phase==="idle"?"pointer":"default",
+              background:idx===room?.currentIndex?"#FFF3E0":"var(--surface)",
+              boxShadow:idx===room?.currentIndex?"var(--shadow-sm)":"none",
+              transition:"all .15s ease",animation:"slide-in .3s ease",
+              display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={{flex:1,minWidth:0}}>
+              <div className="mono" style={{fontSize:".6rem",fontWeight:700,color:"var(--muted)",textTransform:"uppercase",letterSpacing:".1em"}}>
+                {issue.result?`â ${issue.result.tshirt?.label} (${issue.result.avg})`:`#${idx+1} Â· R${issue.round}`}
+              </div>
+              <div style={{fontSize:".85rem",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{issue.title}</div>
+            </div>
+            {room?.phase==="idle"&&<button onClick={e=>{e.stopPropagation();send({type:"removeIssue",issueId:issue.id})}}
+              style={{background:"none",border:"none",cursor:"pointer",color:"var(--muted)",padding:4,fontSize:".9rem"}}>ð</button>}
+          </div>)}
+          {(!room?.issues||room.issues.length===0)&&<p className="mono" style={{textAlign:"center",color:"var(--muted)",fontSize:".75rem",padding:"32px 16px",lineHeight:1.6}}>
+            AÃ±ade issues para empezar a estimar</p>}
+        </div>
+      </aside>
+
+      {/* âââ CENTER: VOTING AREA âââ */}
+      <main style={{flex:1,display:"flex",flexDirection:"column",overflow:"auto",position:"relative"}}>
+        {/* Floating emojis */}
+        <div style={{position:"absolute",inset:0,pointerEvents:"none",overflow:"hidden",zIndex:50}}>
+          {floatingEmojis.map(fe=><div key={fe.id} style={{position:"absolute",bottom:0,left:fe.x,fontSize:"2rem",animation:"float-up 2s ease-out forwards",pointerEvents:"none"}}>
+            {fe.emoji}</div>)}
+        </div>
+
+        {!currentIssue?
+          <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16,padding:40}}>
+            <div style={{fontSize:"4rem"}}>ð</div>
+            <h2 className="mono" style={{fontSize:"1.2rem",fontWeight:700,textTransform:"uppercase",letterSpacing:".1em"}}>Sin issues pendientes</h2>
+            <p style={{color:"var(--muted)",textAlign:"center",maxWidth:400}}>AÃ±ade issues en la barra lateral para empezar a estimar con tu equipo.</p>
+          </div>
+        :<>
+          {/* Issue header */}
+          <div style={{padding:"20px 24px 0"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+              <span className="label" style={{margin:0}}>Issue {room.currentIndex+1}/{room.issues.length} Â· Ronda {currentIssue.round}</span>
+              {room.phase==="voting"&&<span className="tag" style={{background:"var(--accent)",color:"#fff"}}>VOTANDO</span>}
+              {room.phase==="revealed"&&<span className="tag" style={{background:"#4CAF50",color:"#fff"}}>RESULTADO</span>}
+            </div>
+            <h2 className="mono" style={{fontSize:"1.4rem",fontWeight:900,letterSpacing:".02em"}}>{currentIssue.title}</h2>
+          </div>
+
+          {/* Timer */}
+          {room.phase==="voting"&&<div style={{padding:"16px 24px"}}>
+            <TimerBar remaining={room.timerRemaining} total={room.settings?.timerDuration||60}/>
+          </div>}
+
+          {/* Action buttons */}
+          <div style={{padding:"12px 24px",display:"flex",gap:10,flexWrap:"wrap"}}>
+            {room.phase==="idle"&&<button className="btn btn-primary" onClick={()=>send({type:"startVoting"})}>â¶ INICIAR VOTACIÃN</button>}
+            {room.phase==="voting"&&<button className="btn btn-dark" onClick={()=>send({type:"reveal"})}>ð REVELAR</button>}
+            {room.phase==="revealed"&&<>
+              <button className="btn" onClick={()=>send({type:"revote"})}>âº RE-VOTAR</button>
+              {room.currentIndex<room.issues.length-1&&<button className="btn btn-primary" onClick={()=>send({type:"nextIssue"})}>SIGUIENTE â­</button>}
+            </>}
+          </div>
+
+          {/* Voting cards */}
+          {(room.phase==="voting"||room.phase==="idle")&&role==="voter"&&<div style={{padding:"12px 24px 20px"}}>
+            <p className="label" style={{marginBottom:12}}>{room.phase==="voting"?"Selecciona tu estimaciÃ³n":"Esperando inicio..."}</p>
+            <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+              {ALL_CARDS.map(c=>{
+                const sel=myVote===c;
+                const isSpecial=typeof c==="string";
+                const ts=!isSpecial?getTShirt(c):null;
+                return <div key={c} className={`card ${sel?"selected":""} ${room.phase!=="voting"?"disabled":""}`}
+                  onClick={()=>room.phase==="voting"&&send({type:"vote",value:c})}>
+                  <span className="mono" style={{fontSize:isSpecial?"1.8rem":"1.6rem",fontWeight:900}}>{c}</span>
+                  {ts&&!sel&&<span className="mono" style={{fontSize:".65rem",fontWeight:700,color:ts.color,marginTop:2}}>{ts.label}</span>}
+                </div>;
+              })}
+            </div>
+          </div>}
+
+          {role==="observer"&&room.phase==="voting"&&<div style={{padding:24,textAlign:"center",color:"var(--muted)",fontFamily:"var(--mono)",fontSize:".85rem"}}>
+            ð MODO OBSERVADOR â Esperando votaciones...
+          </div>}
+
+          {/* Results */}
+          {room.phase==="revealed"&&currentIssue.result&&<div style={{padding:"8px 24px 24px",animation:"slide-in .4s ease"}}>
+            <div className="surface" style={{padding:24,animation:currentIssue.result.consensus?"glow-pulse 1s ease infinite":"none"}}>
+              <h3 className="label" style={{fontSize:".75rem",marginBottom:16}}>
+                {currentIssue.result.consensus?"ð Â¡CONSENSO!":"RESULTADO"}
+              </h3>
+              <div style={{display:"flex",alignItems:"center",gap:24,flexWrap:"wrap"}}>
+                <div style={{textAlign:"center"}}>
+                  <div className="mono" style={{fontSize:"3rem",fontWeight:900,lineHeight:1}}>{currentIssue.result.avg??"â"}</div>
+                  <div className="label" style={{margin:0}}>MEDIA</div>
+                </div>
+                <div style={{width:80,height:80,borderRadius:12,border:"var(--border)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                  background:currentIssue.result.tshirt?.color||"#999",color:"#fff",boxShadow:"var(--shadow-sm)"}}>
+                  <span className="mono" style={{fontSize:"1.8rem",fontWeight:900}}>{currentIssue.result.tshirt?.label}</span>
+                  <span className="mono" style={{fontSize:".6rem",fontWeight:600,opacity:.9}}>TALLA</span>
+                </div>
+                <div style={{textAlign:"center"}}>
+                  <div className="mono" style={{fontSize:"2rem",fontWeight:900,lineHeight:1}}>{currentIssue.result.totalVoters}</div>
+                  <div className="label" style={{margin:0}}>VOTOS</div>
+                </div>
+              </div>
+              <div style={{marginTop:20}}>
+                <h4 className="label">DISTRIBUCIÃN</h4>
+                <VoteDistribution votes={currentIssue.votes}/>
+              </div>
+              {!room.settings?.anonymous&&<div style={{marginTop:16}}>
+                <h4 className="label">VOTOS INDIVIDUALES</h4>
+                <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                  {voters.map(p=><div key={p.id} style={{padding:"6px 12px",border:"var(--border)",borderRadius:6,fontFamily:"var(--mono)",fontSize:".8rem",fontWeight:600,display:"flex",alignItems:"center",gap:6,background:"var(--surface)"}}>
+                    <span>{p.avatar||"ð"}</span><span>{p.name}</span>
+                    <span style={{background:"#000",color:"#fff",padding:"2px 6px",borderRadius:4,fontWeight:900}}>{currentIssue.votes?.[p.id]??"â"}</span>
+                  </div>)}
+                </div>
+              </div>}
+            </div>
+          </div>}
+        </>}
+
+        {/* Emoji bar */}
+        <div style={{marginTop:"auto",padding:"12px 24px",borderTop:"var(--border)",background:"var(--surface)",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+          <span className="label" style={{margin:0,marginRight:8}}>Reacciones</span>
+          {EMOJIS.map(e=><button key={e} onClick={()=>send({type:"reaction",emoji:e})}
+            style={{fontSize:"1.4rem",padding:"4px 6px",background:"none",border:"none",cursor:"pointer",borderRadius:6,transition:"transform .15s"}}
+            onMouseOver={ev=>ev.currentTarget.style.transform="scale(1.3)"}
+            onMouseOut={ev=>ev.currentTarget.style.transform="scale(1)"}>{e}</button>)}
+        </div>
+      </main>
+
+      {/* âââ RIGHT SIDEBAR: PARTICIPANTS âââ */}
+      <aside className="sidebar-r">
+        <div style={{padding:"16px 14px 12px",borderBottom:"var(--border)"}}>
+          <h3 className="label" style={{margin:0}}>ð¥ Equipo ({(room?.participants||[]).length})</h3>
+        </div>
+        {voters.length>0&&<div style={{padding:"12px 14px"}}>
+          <div className="label" style={{marginBottom:8}}>ð³ Votantes ({voters.length})</div>
+          {voters.map(p=>{
+            const voted=currentIssue?.votes?.[p.id]!==undefined;
+            const isMe=p.id===userId;
+            return <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",marginBottom:4,borderRadius:6,
+              background:isMe?"#FFF3E0":"transparent",border:isMe?"var(--border)":"2px solid transparent"}}>
+              <span style={{fontSize:"1.1rem"}}>{p.avatar||"ð"}</span>
+              <span style={{flex:1,fontSize:".85rem",fontWeight:isMe?700:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                {p.name}{isMe?" (tÃº)":""}
+              </span>
+              {room?.phase==="voting"&&<span style={{width:20,height:20,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:".7rem",
+                background:voted?"#4CAF50":"#E0E0E0",color:voted?"#fff":"#999",border:`2px solid ${voted?"#4CAF50":"#bbb"}`,transition:"all .3s"}}>
+                {voted?"â":"Â·"}
+              </span>}
+              {room?.phase==="revealed"&&currentIssue?.votes?.[p.id]!=null&&!room.settings?.anonymous&&
+                <span className="mono" style={{fontSize:".75rem",fontWeight:900,background:"#000",color:"#fff",padding:"2px 6px",borderRadius:4}}>
+                  {currentIssue.votes[p.id]}
+                </span>}
+            </div>;
+          })}
+        </div>}
+        {observers.length>0&&<div style={{padding:"0 14px 12px"}}>
+          <div className="label" style={{marginBottom:8}}>ð Observadores ({observers.length})</div>
+          {observers.map(p=><div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",marginBottom:4,opacity:.7}}>
+            <span style={{fontSize:"1.1rem"}}>{p.avatar||"ð"}</span>
+            <span style={{fontSize:".85rem"}}>{p.name}{p.id===userId?" (tÃº)":""}</span>
+          </div>)}
+        </div>}
+        {room?.reactions?.length>0&&<div style={{padding:"12px 14px",marginTop:"auto",borderTop:"var(--border)"}}>
+          <div className="label" style={{marginBottom:6}}>Actividad</div>
+          {room.reactions.slice(-6).reverse().map(r=><div key={r.id} style={{fontSize:".75rem",color:"var(--muted)",display:"flex",alignItems:"center",gap:4,marginBottom:2}}>
+            <span>{r.emoji}</span><span style={{fontWeight:600,color:"var(--text)"}}>{r.user}</span>
+          </div>)}
+        </div>}
+      </aside>
+    </div>
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
